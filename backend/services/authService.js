@@ -6,37 +6,35 @@ export class AuthService {
   }
 
   async registerUser(email, password) {
-    // Check if user already exists
     const existing = await this.db.get('SELECT id FROM users WHERE email = ?', [email]);
     if (existing) {
       throw new Error('User already exists');
     }
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Insert user into SQLite using raw SQL
     const result = await this.db.run(
-      'INSERT INTO users (email, password) VALUES (?, ?)',
+      "INSERT INTO users (email, password, role) VALUES (?, ?, 'user')",
       [email, hashedPassword]
     );
 
-    return { id: result.lastID, email };
+    return { id: result.lastID, email, role: 'user' };
   }
 
   async loginUser(email, password) {
-    // Find user
     const user = await this.db.get('SELECT * FROM users WHERE email = ?', [email]);
     if (!user) {
       throw new Error('Invalid email or password');
     }
 
-    // Compare passwords
+    if (user.is_blocked) {
+      throw new Error('This account is blocked. Contact support.');
+    }
+
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       throw new Error('Invalid email or password');
     }
 
-    return { id: user.id, email: user.email };
+    return { id: user.id, email: user.email, role: user.role };
   }
 }
