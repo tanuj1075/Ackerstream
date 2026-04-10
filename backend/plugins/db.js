@@ -4,6 +4,19 @@ import { open } from 'sqlite';
 import bcrypt from 'bcryptjs';
 import { env } from '../config/env.js';
 
+const ensureUserColumns = async (db) => {
+  const columns = await db.all('PRAGMA table_info(users)');
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has('role')) {
+    await db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
+  }
+
+  if (!names.has('is_blocked')) {
+    await db.exec('ALTER TABLE users ADD COLUMN is_blocked INTEGER NOT NULL DEFAULT 0');
+  }
+};
+
 async function dbPlugin(fastify) {
   const db = await open({
     filename: env.DB_FILE,
@@ -19,7 +32,11 @@ async function dbPlugin(fastify) {
       is_blocked INTEGER NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+  `);
 
+  await ensureUserColumns(db);
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS movies (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
@@ -102,13 +119,16 @@ async function dbPlugin(fastify) {
 
   const adminEmail = 'admin@ticketales.com';
   const existingAdmin = await db.get('SELECT id FROM users WHERE email = ?', [adminEmail]);
+
   if (!existingAdmin) {
     const hashed = await bcrypt.hash('Admin@123', 10);
-    await db.run('INSERT INTO users (email, password, role) VALUES (?, ?, ?)', [
+    await db.run('INSERT INTO users (email, password, role, is_blocked) VALUES (?, ?, ?, 0)', [
       adminEmail,
       hashed,
       'super_admin'
     ]);
+  } else {
+    await db.run("UPDATE users SET role = 'super_admin', is_blocked = 0 WHERE email = ?", [adminEmail]);
   }
 
   fastify.decorate('db', db);
