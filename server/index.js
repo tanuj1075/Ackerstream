@@ -5,7 +5,8 @@ const config = require('./config');
 const express        = require('express');
 const http           = require('http');
 const cors           = require('cors');
-const { sequelize }  = require('./models');
+const { sequelize, User }  = require('./models');
+const bcrypt = require('bcryptjs');
 const { logger, requestLogger } = require('./middlewares/logger');
 const { initSocketIO }          = require('./socket');
 const { startExpireJob }        = require('./jobs/expireBookings');
@@ -61,11 +62,38 @@ app.get('/api/health', asyncHandler(async (req, res) => {
 // ── Global Error Handler ──────────────────────────────────────────────────────
 app.use(errorHandler);
 
+
+const ensureDefaultAdmin = async () => {
+  const adminEmail = (process.env.ADMIN_DEFAULT_EMAIL || 'admin@ticketales.com').trim().toLowerCase();
+  const adminPassword = process.env.ADMIN_DEFAULT_PASSWORD || 'Admin@123';
+
+  let admin = await User.findOne({ where: { email: adminEmail } });
+  const password_hash = await bcrypt.hash(adminPassword, 10);
+
+  if (!admin) {
+    await User.create({
+      name: 'Super Admin',
+      email: adminEmail,
+      password_hash,
+      role: 'ADMIN'
+    });
+    logger.info(`[Admin] Default admin created: ${adminEmail}`);
+    return;
+  }
+
+  if (admin.role !== 'ADMIN') {
+    admin.role = 'ADMIN';
+  }
+  admin.password_hash = password_hash;
+  await admin.save();
+};
+
 // ── Boot ──────────────────────────────────────────────────────────────────────
 const start = async () => {
   try {
     await sequelize.authenticate();
     logger.info('[DB] PostgreSQL connection established');
+    await ensureDefaultAdmin();
     startExpireJob();
     server.listen(config.PORT, () => {
       logger.info(`[Server] Listening on http://localhost:${config.PORT} [${config.NODE_ENV}]`);
