@@ -44,7 +44,7 @@ const Dashboard = () => {
       <main className="dashboard-content">
         <div className="welcome-card glass-card">
           <h1>Welcome, {user?.email} 👋</h1>
-          <p>You have successfully logged into the minimal Fastify + React app.</p>
+          <p>User portal is active. Admins can access the admin panel at /admin after admin login.</p>
           <div className="stats-grid">
             <div className="stat-box">
               <h3>User ID</h3>
