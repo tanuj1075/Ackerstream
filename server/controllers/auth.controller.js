@@ -11,9 +11,22 @@ exports.register = async (req, res) => {
     throw new AppError('Email already registered', 409);
   }
 
-  const user = await User.create({ name, email, password_hash: password });
+  const normalizedEmail = email.trim().toLowerCase();
+  const adminEmails = (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  const role = adminEmails.includes(normalizedEmail) ? 'ADMIN' : 'CUSTOMER';
+  const password_hash = await bcrypt.hash(password, 10);
 
-  const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
+  const user = await User.create({
+    name,
+    email: normalizedEmail,
+    password_hash,
+    role
+  });
+
+  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   });
 
@@ -26,12 +39,13 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ where: { email } });
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await User.findOne({ where: { email: normalizedEmail } });
   if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     throw new AppError('Invalid email or password', 401);
   }
 
-  const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, {
+  const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   });
 
